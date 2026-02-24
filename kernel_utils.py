@@ -32,7 +32,10 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data import DataLoader, random_split 
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics.pairwise import rbf_kernel
-from pyrfm import OrthogonalRandomFeature,CompactRandomFeature,RandomFourier,FastFood
+try:
+    from pyrfm import OrthogonalRandomFeature,CompactRandomFeature,RandomFourier,FastFood
+except ImportError:
+    OrthogonalRandomFeature = CompactRandomFeature = RandomFourier = FastFood = None
 from tqdm import tqdm
 import utilites as utils
 from eval_metrics import spd,model_accuracy,eoo_binary_attribute
@@ -696,7 +699,8 @@ def client_update_fedfair(client_model, Weights, Local_Acc, Local_Fair, Local_Ga
                     targets = targets.to(device)
                     optimizer.zero_grad()
                     outputs = client_model(inputs)
-                    loss = loss_func((F.tanh(outputs.squeeze()) + 1) / 2, targets.squeeze())
+                    targets_01 = (targets.squeeze() + 1) / 2  # FairBatch uses {-1,1}; BCELoss needs [0,1]
+                    loss = loss_func((F.tanh(outputs.squeeze()) + 1) / 2, targets_01)
                     loss.backward()
                     optimizer.step()
 

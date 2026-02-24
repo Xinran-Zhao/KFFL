@@ -1,0 +1,45 @@
+name: kffl
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - gurobi
+  - defaults
+dependencies:
+  # Python
+  - python=3.10
+
+  # PyTorch with CUDA 12.8
+  - pytorch::pytorch>=2.0
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=12.8
+
+  # Core scientific computing
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+
+  # Optimization
+  - cvxpy
+  - gurobi::gurobi
+
+  # Misc
+  - tqdm
+  - joblib
+  - pillow
+  - pyyaml
+  - pip
+
+  # pip-only packages
+  - pip:
+    - aif360
+    - fairlearn
+    - pygranso
+    - pyrfm
+    - filterpy
+    - networkx
+
+prefix: /scratch/xzhao181/.conda/envs/kffl

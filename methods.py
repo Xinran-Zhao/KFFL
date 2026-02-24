@@ -386,6 +386,8 @@ def run_FairFed(method,model,client_distribution,dataset,protected_index,params,
 
     
     train_datasets,trainset,testset = utils.create_local_datasets(dataset,client_distribution,params["num_sel"],protected_index)
+    utils.print_client_gender_distribution(train_datasets, protected_index)
+
     weights,weights_norm = utils.calculate_weights(train_datasets)
     client_weights = weights_norm
     Weights = {}

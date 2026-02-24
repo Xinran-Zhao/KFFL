@@ -55,7 +55,7 @@ def spd(model, dataset, protected_attribute_index, weighted=False) -> torch.tens
         statistical_parity_difference = group1_positive_rate - group0_positive_rate
 
     assert -1 <= statistical_parity_difference and statistical_parity_difference <= 1
-    return statistical_parity_difference,group1_positive_rate, group0_positive_rate
+    return statistical_parity_difference.item(), group1_positive_rate.item(), group0_positive_rate.item()
 
 
 def eoo_binary_attribute(model, dataset, protected_attribute_index):
@@ -98,7 +98,7 @@ def eoo_binary_attribute(model, dataset, protected_attribute_index):
 
         equalized_opportunity_odds = group1_true_positive_rate - group0_true_positive_rate
         assert -1 <= equalized_opportunity_odds and equalized_opportunity_odds <= 1
-        return equalized_opportunity_odds,group1_true_positive_rate, group0_true_positive_rate
+        return equalized_opportunity_odds.item(), group1_true_positive_rate.item(), group0_true_positive_rate.item()
 
 
 def model_accuracy(model, dataset, binary : bool = False):

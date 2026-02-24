@@ -32,7 +32,12 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data import DataLoader, random_split 
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics.pairwise import rbf_kernel
-from pyrfm import OrthogonalRandomFeature,CompactRandomFeature,RandomFourier,FastFood
+try:
+    from pyrfm import OrthogonalRandomFeature,CompactRandomFeature,RandomFourier,FastFood
+except ImportError:
+    # pyrfm (neonnnnn/pyrfm) is not installed; kernel-based methods (KRTWD, KRTD,
+    # FairFed_w_FairBatch_kernel) will not work, but all other methods are unaffected.
+    OrthogonalRandomFeature = CompactRandomFeature = RandomFourier = FastFood = None
 from tqdm import tqdm
 import sys, os
 import numpy as np
@@ -53,6 +58,29 @@ def get_num_features(trainset):
     for x,y in loader:
         n,d = x.shape[:]
     return d
+
+def print_client_gender_distribution(train_datasets, protected_idx, label_0='Female', label_1='Male'):
+    """
+    打印每个client数据集中的性别分布。
+    protected_idx: 性别特征的列索引（ADULT数据集中为40，即sex_Male）
+    label_0: 值为0表示的性别（Female）
+    label_1: 值为1表示的性别（Male）
+    """
+    print("\n========== Client Gender Distribution ==========")
+    for i, ds in enumerate(train_datasets):
+        loader = DataLoader(ds, batch_size=len(ds))
+        for inputs, _ in loader:
+            gender_col = inputs[:, protected_idx]
+            n_total = len(gender_col)
+            n_male   = int((gender_col == 1).sum().item())
+            n_female = int((gender_col == 0).sum().item())
+            pct_male   = 100.0 * n_male   / n_total if n_total > 0 else 0
+            pct_female = 100.0 * n_female / n_total if n_total > 0 else 0
+            print(f"  Client {i}: Total={n_total:5d} | "
+                  f"{label_1}={n_male:5d} ({pct_male:.1f}%) | "
+                  f"{label_0}={n_female:5d} ({pct_female:.1f}%)")
+    print("================================================\n")
+
 
 def drop_attribute(dataset : Dataset, attribute_idx : int, weighted : bool):
     
