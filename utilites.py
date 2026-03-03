@@ -60,12 +60,6 @@ def get_num_features(trainset):
     return d
 
 def print_client_gender_distribution(train_datasets, protected_idx, label_0='Female', label_1='Male'):
-    """
-    打印每个client数据集中的性别分布。
-    protected_idx: 性别特征的列索引（ADULT数据集中为40，即sex_Male）
-    label_0: 值为0表示的性别（Female）
-    label_1: 值为1表示的性别（Male）
-    """
     print("\n========== Client Gender Distribution ==========")
     for i, ds in enumerate(train_datasets):
         loader = DataLoader(ds, batch_size=len(ds))
@@ -194,20 +188,138 @@ def split_dataset_group_NonIID(train_dataset:Dataset , group_index:int):
             group_ds[str(int(i))]= TensorDataset(inputs[indices[0]], targets[indices[0]])
     return group_ds,lengths,targets_unique_vals
 
-def create_local_datasets(dataset, split_type: str, num_clients: int, protected_idx: int):
-    # dataset = SensrAdultDataset('./Raw_Data/Adult/')
-    partition = 0.8 # 0.8,0.2
-    # Use below only for centralized case....
-    central_split = True
-    if(central_split):
-        # Considering a small subset of the training_data
-        central_partition = 0.2
-        dataset,_ = random_split(dataset, [int(len(dataset) * central_partition), int(len(dataset) - int(len(dataset) * central_partition))])
+def dirichlet_noniid_partition(trainset, num_clients, seed=42, alpha=0.1, group_idx=None):
+    """
+    Partition a dataset among clients by drawing Dirichlet proportions
+    independently for each sensitive-attribute group (A=0 and A=1).
 
-    trainset, testset = random_split(dataset, [int(len(dataset) * partition), int(len(dataset) - int(len(dataset) * partition))])
-    # n = len(trainset)
-    # trainset1 = drop_attribute(trainset, 40, weighted=False)
-    # testset1 = drop_attribute(testset, 40, weighted=False)
+    This matches the FairFed paper convention: alpha controls how skewed
+    each group's distribution is across clients.
+      - Small alpha (e.g. 0.1): one client dominates each group.
+      - Large alpha (e.g. 10) : groups are spread more evenly.
+
+    Args:
+        trainset:    PyTorch Dataset whose items are (feature_tensor, label).
+        num_clients: Number of clients.
+        seed:        Random seed for reproducibility.
+        alpha:       Dirichlet concentration parameter (single value).
+        group_idx:   Column index of the sensitive attribute in the feature tensor.
+
+    Returns:
+        list of TensorDataset: one per client.
+    """
+    assert group_idx is not None, "group_idx (sensitive attribute column) must be provided"
+
+    np.random.seed(seed)
+
+    # Load the full dataset into tensors in one shot
+    loader = DataLoader(trainset, batch_size=len(trainset))
+    for inputs, targets in loader:
+        pass
+
+    group_col = inputs[:, group_idx]
+    unique_groups = sorted(torch.unique(group_col).tolist())
+
+    # Collect row indices per sensitive-attribute value and shuffle them
+    group_indices = {}
+    for g in unique_groups:
+        idxs = torch.where(group_col == g)[0].numpy().copy()
+        np.random.shuffle(idxs)
+        group_indices[g] = idxs
+
+    # For each sensitive-attribute group, draw Dirichlet proportions over
+    # clients and assign samples accordingly (independent draws per group).
+    client_row_indices = [[] for _ in range(num_clients)]
+    for g in unique_groups:
+        idxs = group_indices[g]
+        n = len(idxs)
+
+        proportions = np.random.dirichlet([alpha] * num_clients)
+        counts = (proportions * n).astype(int)
+        counts[-1] = n - counts[:-1].sum()  # fix rounding in last bucket
+
+        # Ensure every client gets at least MIN_PER_GROUP samples per group
+        # (prevents empty client datasets when alpha is very small).
+        MIN_PER_GROUP = 5
+        for i in range(num_clients):
+            if counts[i] < MIN_PER_GROUP:
+                deficit = MIN_PER_GROUP - counts[i]
+                donor = max(
+                    [k for k in range(num_clients) if k != i and counts[k] > MIN_PER_GROUP + deficit],
+                    key=lambda k: counts[k],
+                    default=None,
+                )
+                if donor is not None:
+                    counts[i] += deficit
+                    counts[donor] -= deficit
+
+        start = 0
+        for i in range(num_clients):
+            end = start + int(counts[i])
+            client_row_indices[i].extend(idxs[start:end].tolist())
+            start = end
+
+    # Build per-client TensorDatasets
+    train_datasets = []
+    for i in range(num_clients):
+        rows = client_row_indices[i]
+        train_datasets.append(
+            TensorDataset(
+                inputs[rows].clone(),
+                targets[rows].clone(),
+            )
+        )
+    return train_datasets
+
+def _to_tensor_dataset(ds):
+    """Convert any PyTorch Dataset (including Subset) to a TensorDataset.
+
+    This is required before saving to disk because Subset objects hold
+    a reference to the parent dataset and cannot be cleanly serialized
+    on their own. TensorDataset objects are self-contained and safe to
+    save with torch.save().
+    """
+    loader = DataLoader(ds, batch_size=len(ds))
+    for inputs, targets in loader:
+        return TensorDataset(inputs.clone(), targets.clone())
+
+
+def create_local_datasets(dataset, split_type: str, num_clients: int, protected_idx: int,
+                          alpha1: float = 100.0, alpha2: float = 0.1):
+    # Fix random seeds to ensure consistent data partitioning across runs,
+    # so different algorithms (e.g. FedAvg vs FairFed) always see the same client data.
+    SEED = 42
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+
+    # ------------------------------------------------------------------
+    # Cache: if this exact partition has been computed before, load it
+    # directly so all methods train on the exact same client splits.
+    # ------------------------------------------------------------------
+    cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    if split_type == 'Dirichlet':
+        cache_name = (f'partition_{split_type}_c{num_clients}'
+                      f'_pidx{protected_idx}_alpha{alpha2}_seed{SEED}.pt')
+    else:
+        cache_name = f'partition_{split_type}_c{num_clients}_pidx{protected_idx}_seed{SEED}.pt'
+    cache_path = os.path.join(cache_dir, cache_name)
+
+    if os.path.exists(cache_path):
+        print(f'[Partition] Loading cached partition from {cache_path}')
+        cache = torch.load(cache_path, weights_only=False)
+        return cache['train_datasets'], cache['trainset'], cache['testset']
+
+    # ------------------------------------------------------------------
+    # No cache found: run partition, then save for future reuse.
+    # ------------------------------------------------------------------
+    partition = 0.8  # train / test split ratio
+    central_split = False  # use the full dataset for federated training
+
+    trainset, testset = random_split(dataset, [int(len(dataset) * partition),
+                                               int(len(dataset) - int(len(dataset) * partition))])
 
     train_datasets = []
 
@@ -237,9 +349,11 @@ def create_local_datasets(dataset, split_type: str, num_clients: int, protected_
                         samples_even.extend(random_split(value, [dist_even[i], len(value) - dist_even[i]])[0])
     
                 elif key == '1':
-                    # Calculate the target distribution for odd and even clients
-                    dist_odd = [int(len(value) * 0.1) for _ in range(odd)]
-                    dist_even = [int(len(value) * 0.9) for _ in range(even)]
+                    # Flipped distribution vs group '0':
+                    # odd clients get 90% of Male, even clients get 10% of Male
+                    # → odd clients become Male-heavy, even clients become Female-heavy
+                    dist_odd = [int(len(value) * 0.9) for _ in range(odd)]
+                    dist_even = [int(len(value) * 0.1) for _ in range(even)]
     
                     # Distribute samples to odd clients
                     for i in range(odd):
@@ -278,8 +392,15 @@ def create_local_datasets(dataset, split_type: str, num_clients: int, protected_
         else:
             print("Invalid number of clients")
 
+    elif split_type == 'Dirichlet':
+        # Partition by sensitive attribute A using Dirichlet([alpha2]*num_clients),
+        # matching the FairFed paper convention.
+        train_datasets = dirichlet_noniid_partition(
+            trainset, num_clients, seed=42, alpha=alpha2, group_idx=protected_idx
+        )
+
     else:
-        print('Not a valid distribution type. Choose from IID or Non-IID ')
+        print('Not a valid distribution type. Choose from IID, Non-IID, or Dirichlet.')
 
    # import pdb;pdb.set_trace() 
    # Example usage:
@@ -296,8 +417,21 @@ def create_local_datasets(dataset, split_type: str, num_clients: int, protected_
         
         
     assert len(train_datasets) == num_clients
-    
-    return train_datasets, trainset, testset
+
+    # Convert all datasets to TensorDataset before saving (Subset is not
+    # cleanly serializable on its own).
+    print(f'[Partition] Saving partition to {cache_path}')
+    train_datasets_td = [_to_tensor_dataset(ds) for ds in train_datasets]
+    trainset_td       = _to_tensor_dataset(trainset)
+    testset_td        = _to_tensor_dataset(testset)
+    torch.save(
+        {'train_datasets': train_datasets_td,
+         'trainset':       trainset_td,
+         'testset':        testset_td},
+        cache_path
+    )
+
+    return train_datasets_td, trainset_td, testset_td
 
 
 
@@ -554,16 +688,11 @@ def fairbatch_dataset(dataset:Dataset,protected_idx:int):
     
     z_train = sens_feature.squeeze(1)
     xz_train = non_sens_feature.squeeze(1)
-    y_train =  target_tensor.squeeze(1)
-    
-
-    
+    y_train = target_tensor.reshape(-1)   # handles both [N] and [N,1] shapes   
     
     xz_train = torch.FloatTensor(xz_train)
     y_train = torch.FloatTensor(y_train).float()
     z_train = torch.FloatTensor(z_train)
-
-    
     
     y_train = torch.where(y_train == 0.0, -1.0, y_train.double()).float()
     

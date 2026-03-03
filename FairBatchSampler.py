@@ -49,8 +49,8 @@ class FairBatch(Sampler):
         model: A model containing the intermediate states of the training.
         x_, y_, z_data: Tensor-based train data.
         alpha: A positive number for step size that used in the lambda adjustment.
-        fairness_type: A string indicating the target fairness type 
-                       among original, demographic parity (dp), equal opportunity (eqopp), and equalized odds (eqodds).
+        fairness_type: A string indicating the target fairness type among original, 
+                    demographic parity (dp), equal opportunity (eqopp), and equalized odds (eqodds).
         replacement: A boolean indicating whether a batch consists of data with or without replacement.
         N: An integer counting the size of data.
         batch_size: An integer for the size of a batch.
@@ -142,8 +142,15 @@ class FairBatch(Sampler):
         
         #import pdb;pdb.set_trace()
         
-        self.lb1 = (self.S[1,1])/(self.S[1,1]+(self.S[1,0]))
-        self.lb2 = (self.S[-1,1])/(self.S[-1,1]+(self.S[-1,0]))
+        # Safe initialization: default to 0.5 if a (y,z) class is absent from
+        # this client's data (can happen with very skewed Dirichlet partitions).
+        _s11 = self.S.get((1,  1), 0)
+        _s10 = self.S.get((1,  0), 0)
+        self.lb1 = _s11 / (_s11 + _s10) if (_s11 + _s10) > 0 else 0.5
+
+        _sm1 = self.S.get((-1, 1), 0)
+        _sm0 = self.S.get((-1, 0), 0)
+        self.lb2 = _sm1 / (_sm1 + _sm0) if (_sm1 + _sm0) > 0 else 0.5
     
     
     def adjust_lambda(self):
@@ -238,19 +245,19 @@ class FairBatch(Sampler):
                 yhat_yz[tmp_yz] = float(torch.sum(dp_loss[self.yz_index[tmp_yz]])) / self.z_len[tmp_yz[1]]
                     
             
-            y1_diff = abs(yhat_yz[(1, 1)] - yhat_yz[(1, 0)])
-            y0_diff = abs(yhat_yz[(-1, 1)] - yhat_yz[(-1, 0)])
-            
+            y1_diff = abs(yhat_yz.get((1, 1), 0) - yhat_yz.get((1, 0), 0))
+            y0_diff = abs(yhat_yz.get((-1, 1), 0) - yhat_yz.get((-1, 0), 0))
+
             # lb1 * loss_y1z1 + (1-lb1) * loss_y1z0
             # lb2 * loss_y0z1 + (1-lb2) * loss_y0z0
-            
+
             if y1_diff > y0_diff:
-                if yhat_yz[(1, 1)] > yhat_yz[(1, 0)]:
+                if yhat_yz.get((1, 1), 0) > yhat_yz.get((1, 0), 0):
                     self.lb1 += self.alpha
                 else:
                     self.lb1 -= self.alpha
             else:
-                if yhat_yz[(-1, 1)] > yhat_yz[(-1, 0)]: 
+                if yhat_yz.get((-1, 1), 0) > yhat_yz.get((-1, 0), 0):
                     self.lb2 -= self.alpha
                 else:
                     self.lb2 += self.alpha
@@ -349,18 +356,20 @@ class FairBatch(Sampler):
             elif self.fairness_type == 'dp':
                 # lb1 * loss_y1z1 + (1-lb1) * loss_y1z0
                 # lb2 * loss_y0z1 + (1-lb2) * loss_y0z0
+                _S11 = self.S.get((1,  1), 0); _S10 = self.S.get((1,  0), 0)
+                _Sm1 = self.S.get((-1, 1), 0); _Sm0 = self.S.get((-1, 0), 0)
+                each_size[(1,  1)] = round(self.lb1 * (_S11 + _S10))
+                each_size[(1,  0)] = round((1 - self.lb1) * (_S11 + _S10))
+                each_size[(-1, 1)] = round(self.lb2 * (_Sm1 + _Sm0))
+                each_size[(-1, 0)] = round((1 - self.lb2) * (_Sm1 + _Sm0))
 
-                each_size[(1,1)] = round(self.lb1 * (self.S[(1,1)] + self.S[(1,0)]))
-                each_size[(1,0)] = round((1-self.lb1) * (self.S[(1,1)] + self.S[(1,0)]))
-                each_size[(-1,1)] = round(self.lb2 * (self.S[(-1,1)] + self.S[(-1,0)]))
-                each_size[(-1,0)] = round((1-self.lb2) * (self.S[(-1,1)] + self.S[(-1,0)]))
 
-
-            # Get the indices for each class
-            sort_index_y_1_z_1 = self.select_batch_replacement(each_size[(1, 1)], self.yz_index[(1,1)], self.batch_num, self.replacement)
-            sort_index_y_0_z_1 = self.select_batch_replacement(each_size[(-1, 1)], self.yz_index[(-1,1)], self.batch_num, self.replacement)
-            sort_index_y_1_z_0 = self.select_batch_replacement(each_size[(1, 0)], self.yz_index[(1,0)], self.batch_num, self.replacement)
-            sort_index_y_0_z_0 = self.select_batch_replacement(each_size[(-1, 0)], self.yz_index[(-1,0)], self.batch_num, self.replacement)
+            # Get the indices for each class (fall back to empty tensor if class absent)
+            _empty = torch.zeros(0, dtype=torch.long)
+            sort_index_y_1_z_1 = self.select_batch_replacement(each_size[(1,  1)], self.yz_index.get((1,  1), _empty), self.batch_num, self.replacement)
+            sort_index_y_0_z_1 = self.select_batch_replacement(each_size[(-1, 1)], self.yz_index.get((-1, 1), _empty), self.batch_num, self.replacement)
+            sort_index_y_1_z_0 = self.select_batch_replacement(each_size[(1,  0)], self.yz_index.get((1,  0), _empty), self.batch_num, self.replacement)
+            sort_index_y_0_z_0 = self.select_batch_replacement(each_size[(-1, 0)], self.yz_index.get((-1, 0), _empty), self.batch_num, self.replacement)
             
                 
             for i in range(self.batch_num):

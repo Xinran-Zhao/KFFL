@@ -9,8 +9,9 @@ from utilites import get_num_features
 
 
 
-def simulation_spec(method,model,client_distribution,desired_data,fairness = None):
-    ######## Choose a dataset ############
+def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
+                    step_size=0.01, fb_lr=0.005, num_rounds=200, alpha=0.1):
+    ######## 1. Choose a dataset ############
     
     if(desired_data == 'ADULT'):
         
@@ -24,14 +25,12 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
     else:
         print("The following dataset is not suppported at the moment. Choose from: ADULT, COMPAS ")
     
-    
-    #  #########################
      
     num_sensattr  = 1 ### Default Value
     num_features = get_num_features(dataset)
      
      
-    ###### Choose a model #########
+    ######## 2. Choose a model #########
     if(model == 'LR'):
         model = BinaryLogisticRegression(num_features - num_sensattr)
          
@@ -40,6 +39,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
         
 
     
+    ######## 3. Choose a method #########
     if(method == 'KRTWD'):
       
         params = {
@@ -54,9 +54,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
          "T":50,
          "D":10,
          }
-        
-
-        
+    
         acc,spd,eod,comm_cost = run_KRTWD(method,model,client_distribution,dataset,protected_index,params)
         
     
@@ -75,8 +73,6 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
          "D":10,
          }
         
-
-        
         acc,spd,eod,comm_cost = run_KRTD(method,model,client_distribution,dataset,protected_index,params)
 
     elif(method == 'Central'):
@@ -91,6 +87,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
         acc,spd,eod  = run_Centralized(method,model,dataset,protected_index,params)
         comm_cost = 0
         #acc,spd,eod,comm_cost  = run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric)
+    
     elif(method == 'FedAvg'):
         
         params = {'local_epochs' :5 ,
@@ -99,7 +96,6 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
           'step_size':0.1,
           'batch_size': 64,
           "num_rounds":10}
-        
         
         acc,spd,eod,comm_cost  = run_FedAvg(method,model,client_distribution,dataset,protected_index,params)
     
@@ -114,14 +110,16 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
         acc,spd,eod,comm_cost  = run_MinMax(method,model,client_distribution,dataset,protected_index,params)
         
     elif(method == 'FairFed_w_FairBatch'):
-        params = {'local_epochs' :5,
-          "total_clients": 4,
-          "num_sel":4,
-          'step_size':0.1,
+        params = {'local_epochs': 5,
+          "total_clients": 5,
+          "num_sel": 5,
+          'step_size': step_size,
+          'fb_lr': fb_lr,
           'batch_size': 64,
-          'beta': 5,
-          "num_rounds":10}
-        fmetric = 'spd' #'eod','spd'
+          'beta': 1,
+          "num_rounds": num_rounds,
+          'alpha': alpha}
+        fmetric = 'eod'
         acc,spd,eod,comm_cost  = run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric)
         
         
@@ -145,18 +143,24 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness = Non
     return results
 
 ## Simulation Runs 
-def simulation_runs(method, model, client_distribution, dataset, num_simulation, params = None):
+def simulation_runs(method, model, client_distribution, dataset, num_simulation, params=None,
+                    step_size=0.01, fb_lr=0.005, num_rounds=200, alpha=0.1):
     acc = []
     spd = []
     eod = []
     comm_cost = []
-    seeds =[i for i in range(num_simulation)]
+    seeds = [i for i in range(num_simulation)]
     for i in range(num_simulation):
         torch.manual_seed(seeds[i])
-        if method in ('KRTD', 'KRTWD','FairFed_w_FairBatch_kernel','Central'):
-            results = simulation_spec(method, model, client_distribution, dataset, fairness = params['fairness'])
+        if method in ('KRTD', 'KRTWD', 'FairFed_w_FairBatch_kernel', 'Central'):
+            results = simulation_spec(method, model, client_distribution, dataset,
+                                      fairness=params['fairness'],
+                                      step_size=step_size, fb_lr=fb_lr,
+                                      num_rounds=num_rounds, alpha=alpha)
         else:
-            results = simulation_spec(method, model, client_distribution, dataset)
+            results = simulation_spec(method, model, client_distribution, dataset,
+                                      step_size=step_size, fb_lr=fb_lr,
+                                      num_rounds=num_rounds, alpha=alpha)
         
         acc.append(results['Acc'])
         spd.append(results['SPD'])

@@ -22,11 +22,12 @@ import numpy as np
 
 #print("Correct File")
 dataset = ['ADULT'] #,#'COMPAS']
-model = ['LR'] #'LR']  # 'NN' --> KRTD and KRTWD
+model = ['NN'] #'LR']  # 'NN' --> KRTD and KRTWD
 #methods = ['KRTWD','KRTD']#'KRTD' , # 'FairFed_w_FairBatch_kernel'
-methods = ['FairFed_w_FairBatch'] # 'KRTWD','Central','FairFed_w_FairBatch', 'FedAvg','MinMax''FairFed_w_FairBatch_kernel'
+methods = ['FairFed_w_FairBatch']
+# methods = ['FedAvg'] # 'KRTWD','Central','FairFed_w_FairBatch', 'FedAvg','MinMax''FairFed_w_FairBatch_kernel'
 #methods = ['KRTWD']
-dist = ['Non-IID'] #'IID'] 
+dist = ['Dirichlet'] #'IID', 'Non-IID', 'Dirichlet'
 
 #torch.manual_seed(0) 
 numsims = 1

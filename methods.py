@@ -5,7 +5,9 @@ import torch
 import numpy as np
 from utilites import fairbatch_dataset
 from eval_metrics import spd,eoo_binary_attribute,model_accuracy
-from tqdm import tqdm
+from tqdm import tqdm as _tqdm
+from functools import partial
+tqdm = partial(_tqdm, disable=True)
 from kernel_utils import rbf_kernel
 
 
@@ -228,8 +230,6 @@ def run_KRTD(method,model,client_distribution,dataset,protected_index,params):
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
                 
-                
-                
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
@@ -252,6 +252,7 @@ def run_FedAvg(method,model,client_distribution,dataset,protected_index,params):
     #client_fair_loss = 0
     
     train_datasets,trainset,testset = utils.create_local_datasets(dataset,client_distribution,params["num_sel"],protected_index)
+    utils.print_client_gender_distribution(train_datasets, protected_index)
     weights,weights_norm = utils.calculate_weights(train_datasets)
   
     per_round_cost = 0 
@@ -385,7 +386,11 @@ def run_FairFed(method,model,client_distribution,dataset,protected_index,params,
 
 
     
-    train_datasets,trainset,testset = utils.create_local_datasets(dataset,client_distribution,params["num_sel"],protected_index)
+    alpha = params.get('alpha', 0.1)
+    train_datasets,trainset,testset = utils.create_local_datasets(
+        dataset, client_distribution, params["num_sel"], protected_index,
+        alpha1=alpha, alpha2=alpha
+    )
     utils.print_client_gender_distribution(train_datasets, protected_index)
 
     weights,weights_norm = utils.calculate_weights(train_datasets)

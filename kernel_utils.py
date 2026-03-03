@@ -36,7 +36,9 @@ try:
     from pyrfm import OrthogonalRandomFeature,CompactRandomFeature,RandomFourier,FastFood
 except ImportError:
     OrthogonalRandomFeature = CompactRandomFeature = RandomFourier = FastFood = None
-from tqdm import tqdm
+from tqdm import tqdm as _tqdm
+from functools import partial
+tqdm = partial(_tqdm, disable=True)
 import utilites as utils
 from eval_metrics import spd,model_accuracy,eoo_binary_attribute
 from utilites import fairbatch_dataset
@@ -569,7 +571,7 @@ def client_update_FAVG(client_model,global_model,train_dataset,protected_index,p
             targets = targets.to(device)
             optimizer.zero_grad()
             outputs = client_model(inputs)
-                 
+            outputs = outputs.view(-1)  # align [B,1] → [B] to match targets [B]
             loss = loss_func(outputs, targets)
 
             loss.backward()
@@ -618,7 +620,8 @@ def client_update_minmax(client_model,train_dataset,w,group_index=40):
             optimizer.zero_grad()
             #print(f'Inputs shape{inputs.shape}')
             outputs = client_model(inputs)
-            loss = loss_func(outputs, targets)            
+            outputs = outputs.view(-1)  # align [B,1] → [B]
+            loss = loss_func(outputs, targets)
             
         ## Do check what the loss function gives you as output sum or the mean?
         
@@ -673,7 +676,11 @@ def client_update_fedfair(client_model, Weights, Local_Acc, Local_Fair, Local_Ga
     #seed = 0
     if flag == 'one':
         ############## Local training / Debiasing ##################
-        optim_init_func = utils.create_optimizer_init_func(torch.optim.Adam)
+        lr = params.get('step_size', 0.01)
+        fb_lr = params.get('fb_lr', 0.005)
+        optim_init_func = utils.create_optimizer_init_func(
+            torch.optim.Adam, {'lr': lr}
+        )
         optimizer = optim_init_func(client_model)
         b = params['batch_size']
         loader_init_func = utils.create_dataloader_init_func({"batch_size": b})
@@ -683,9 +690,9 @@ def client_update_fedfair(client_model, Weights, Local_Acc, Local_Fair, Local_Ga
             xz_train, z_train, y_train = fairbatch_dataset(trainset, protected_attribute_index)
             train_data = CustomDataset(xz_train, y_train, z_train)
             if(fmetric == 'spd'): 
-                sampler = FairBatch(client_model, train_data.x, train_data.y, train_data.z, batch_size=b, alpha=0.005, target_fairness='dp', replacement=False)
+                sampler = FairBatch(client_model, train_data.x, train_data.y, train_data.z, batch_size=b, alpha=fb_lr, target_fairness='dp', replacement=False)
             elif(fmetric =='eod'):
-                sampler = FairBatch(client_model, train_data.x, train_data.y, train_data.z, batch_size=b, alpha=0.005, target_fairness='eqodds', replacement=False)     
+                sampler = FairBatch(client_model, train_data.x, train_data.y, train_data.z, batch_size=b, alpha=fb_lr, target_fairness='eqodds', replacement=False)     
             else:
                 pass
             loader = torch.utils.data.DataLoader(train_data, sampler=sampler, num_workers=0)
@@ -715,6 +722,7 @@ def client_update_fedfair(client_model, Weights, Local_Acc, Local_Fair, Local_Ga
                     targets = targets.to(device)
                     optimizer.zero_grad()
                     outputs = client_model(inputs)
+                    outputs = outputs.view(-1)  # align [B,1] → [B]
                     loss = loss_func(outputs, targets)
                     loss.backward()
                     optimizer.step()
@@ -750,6 +758,7 @@ def client_update_fedfair(client_model, Weights, Local_Acc, Local_Fair, Local_Ga
             Local_Gap["Client " + str(client_num)] = abs(Local_Fair["Client " + str(client_num)] - F_global)
 
     elif flag == 'three':
+        # TODO: Use the beta (fairness penalty weight) value to update the weights
         Weights["Client " + str(client_num)] = Weights["Client " + str(client_num)] - (params['beta']) * (Local_Gap["Client " + str(client_num)] - global_metric_gap)
 
     return client_model
@@ -844,7 +853,7 @@ def client_update_fedfair_kernel(client_model, Weights, Local_Acc, Local_Fair, L
                 # Compute the quantity Tr(H * Ks * H^2 * Kx * H)
                 fairloss = torch.trace(H @ Ks @ H_Kx_H @H)
                
-                loss = loss_func(outputs, targets) +  params["fairness"] * fairloss
+                loss = loss_func(outputs.view(-1), targets.view(-1)) +  params["fairness"] * fairloss
                 
                 loss.backward(retain_graph=True)
                 optimizer.step()
@@ -863,6 +872,7 @@ def client_update_fedfair_kernel(client_model, Weights, Local_Acc, Local_Fair, L
                     targets = targets.to(device)
                     optimizer.zero_grad()
                     outputs = client_model(inputs)
+                    outputs = outputs.view(-1)  # align [B,1] → [B]
                     loss = loss_func(outputs, targets)
                     loss.backward()
                     optimizer.step()
