@@ -47,7 +47,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
     model_name = 'LR' if isinstance(model, BinaryLogisticRegression) else 'NN'
     log_path = utils.make_log_path(
         LOG_DIR, method, model_name, desired_data, client_distribution,
-        seed_idx=seed_idx, alpha=alpha, fairness=fairness
+        seed_idx=seed_idx, alpha=alpha, fairness=fairness, num_rounds=num_rounds
     )
     logger = utils.MetricsLogger(log_path)
 

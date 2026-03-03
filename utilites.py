@@ -715,9 +715,10 @@ class MetricsLogger:
         comm_cost   : cumulative communication cost (MB)
         spd_raw     : signed SPD before taking absolute value
         eod_raw     : signed EOD before taking absolute value
+        round_time  : wall-clock time for this round (seconds)
     """
 
-    HEADER = "round,accuracy,spd,eod,comm_cost,spd_raw,eod_raw\n"
+    HEADER = "round,accuracy,spd,eod,comm_cost,spd_raw,eod_raw,round_time\n"
 
     def __init__(self, log_path: str):
         os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
@@ -726,14 +727,15 @@ class MetricsLogger:
         print(f"[Logger] Writing per-round metrics to {log_path}")
 
     def log_round(self, round_num: int, acc: float, spd_raw: float,
-                  eod_raw: float, comm_cost: float = 0.0):
+                  eod_raw: float, comm_cost: float = 0.0, round_time: float = 0.0):
         row = (f"{round_num},"
                f"{acc:.6f},"
                f"{abs(spd_raw):.6f},"
                f"{abs(eod_raw):.6f},"
                f"{comm_cost:.6f},"
                f"{spd_raw:.6f},"
-               f"{eod_raw:.6f}\n")
+               f"{eod_raw:.6f},"
+               f"{round_time:.3f}\n")
         self._f.write(row)
 
     def close(self):
@@ -749,6 +751,8 @@ def make_log_path(log_dir: str, method: str, model_name: str, dataset: str,
         parts.append(f"alpha{kwargs['alpha']}")
     if kwargs.get('fairness') is not None:
         parts.append(f"fair{kwargs['fairness']}")
+    if kwargs.get('num_rounds') is not None:
+        parts.append(f"r{kwargs['num_rounds']}")
     parts.append(f"seed{seed_idx}")
     filename = "_".join(str(p) for p in parts) + ".csv"
     return os.path.join(log_dir, filename)
