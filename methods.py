@@ -12,7 +12,7 @@ from kernel_utils import rbf_kernel
 
 
 
-def run_KRTWD(method,model,client_distribution,dataset,protected_index,params):
+def run_KRTWD(method,model,client_distribution,dataset,protected_index,params,logger=None):
    
     device = 'cpu'
     
@@ -135,18 +135,21 @@ def run_KRTWD(method,model,client_distribution,dataset,protected_index,params):
                 accuracy.append(acc)
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
-                
-                
-                
+
+                if logger is not None:
+                    logger.log_round(r, acc, spd_act, eod_act, per_round_cost)
+
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds,cost_w_iter
 
 
 
 
-def run_KRTD(method,model,client_distribution,dataset,protected_index,params):
+def run_KRTD(method,model,client_distribution,dataset,protected_index,params,logger=None):
    
     device = 'cpu'
     
@@ -229,13 +232,18 @@ def run_KRTD(method,model,client_distribution,dataset,protected_index,params):
                 accuracy.append(acc)
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
-                
+
+                if logger is not None:
+                    logger.log_round(r, acc, spd_act, eod_act, per_round_cost)
+
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds,cost_w_iter
 
-def run_FedAvg(method,model,client_distribution,dataset,protected_index,params):
+def run_FedAvg(method,model,client_distribution,dataset,protected_index,params,logger=None):
    
     device = 'cpu'
     
@@ -294,18 +302,21 @@ def run_FedAvg(method,model,client_distribution,dataset,protected_index,params):
                 accuracy.append(acc)
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
-                
-                
-                
+
+                if logger is not None:
+                    logger.log_round(r, acc, spd_act, eod_act, per_round_cost)
+
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds,cost_w_iter
 
 
 
 
-def run_MinMax (method,model,client_distribution,dataset,protected_index,params):
+def run_MinMax(method,model,client_distribution,dataset,protected_index,params,logger=None):
     device = 'cpu'
     
     ## Loading the client models and global model
@@ -363,16 +374,19 @@ def run_MinMax (method,model,client_distribution,dataset,protected_index,params)
                 accuracy.append(acc)
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
-                
-                
-                
+
+                if logger is not None:
+                    logger.log_round(r, acc, spd_act, eod_act, per_round_cost)
+
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds,cost_w_iter
 
 
-def run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric = 'spd'):
+def run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric='spd',logger=None):
     
     ## Loading the client models and global model
     device = 'cpu'
@@ -462,21 +476,24 @@ def run_FairFed(method,model,client_distribution,dataset,protected_index,params,
                 accuracy.append(acc)
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
-                
-                
+
+                if logger is not None:
+                    logger.log_round(r, acc, spd_act, eod_act, per_round_cost)
+
                 print(f'Weights {Weights}')
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds,cost_w_iter
-    
 
 
 
 
 
 
-def run_Centralized(method,model,dataset,protected_index,params):
+def run_Centralized(method,model,dataset,protected_index,params,logger=None):
     train_datasets,trainset,testset = utils.create_local_datasets(dataset,'IID',1,protected_index)
     optim_init_func = utils.create_optimizer_init_func(torch.optim.Adam)
     optimizer = optim_init_func(model)
@@ -539,9 +556,14 @@ def run_Centralized(method,model,dataset,protected_index,params):
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
 
+                if logger is not None:
+                    logger.log_round(epoch, acc, spd_act, eod_act, 0.0)
+
                 print(f'Epoch Number {epoch}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds
 
 
@@ -553,7 +575,7 @@ def run_Centralized(method,model,dataset,protected_index,params):
 
 
 
-def run_FairFed_kernel(method,model,client_distribution,dataset,protected_index,params,fmetric = 'spd'):
+def run_FairFed_kernel(method,model,client_distribution,dataset,protected_index,params,fmetric='spd',logger=None):
     
     ## Loading the client models and global model
     device = 'cpu'
@@ -637,11 +659,14 @@ def run_FairFed_kernel(method,model,client_distribution,dataset,protected_index,
                 accuracy.append(acc)
                 statistical_parity_difference .append(spd_act)
                 equalized_odds.append(eod_act)
-                
-                
+
+                if logger is not None:
+                    logger.log_round(r, acc, spd_act, eod_act, per_round_cost)
+
                 print(f'Weights {Weights}')
                 print(f'Round Number {r}')
                 print(f'accuracy {acc}: SPD: {spd_act :.4f} EOD: {eod_act:.4f} Cost: {per_round_cost: .4f}')
 
+    if logger is not None:
+        logger.close()
     return accuracy,statistical_parity_difference,equalized_odds,cost_w_iter
-    

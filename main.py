@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import models
 from models import BinaryLogisticRegression,NN,AdultNN
@@ -7,10 +8,13 @@ from methods import run_KRTWD,run_KRTD,run_FedAvg,run_MinMax,run_FairFed,run_Fai
 import utilites as utils
 from utilites import get_num_features
 
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+
 
 
 def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
-                    step_size=0.01, fb_lr=0.005, num_rounds=200, alpha=0.1):
+                    step_size=0.01, fb_lr=0.005, num_rounds=200, alpha=0.1,
+                    seed_idx=0):
     ######## 1. Choose a dataset ############
     
     if(desired_data == 'ADULT'):
@@ -39,7 +43,15 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
         
 
     
-    ######## 3. Choose a method #########
+    ######## 3. Create per-experiment logger #########
+    model_name = 'LR' if isinstance(model, BinaryLogisticRegression) else 'NN'
+    log_path = utils.make_log_path(
+        LOG_DIR, method, model_name, desired_data, client_distribution,
+        seed_idx=seed_idx, alpha=alpha, fairness=fairness
+    )
+    logger = utils.MetricsLogger(log_path)
+
+    ######## 4. Choose a method #########
     if(method == 'KRTWD'):
       
         params = {
@@ -55,7 +67,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
          "D":10,
          }
     
-        acc,spd,eod,comm_cost = run_KRTWD(method,model,client_distribution,dataset,protected_index,params)
+        acc,spd,eod,comm_cost = run_KRTWD(method,model,client_distribution,dataset,protected_index,params,logger=logger)
         
     
     elif(method == 'KRTD'):
@@ -73,7 +85,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
          "D":10,
          }
         
-        acc,spd,eod,comm_cost = run_KRTD(method,model,client_distribution,dataset,protected_index,params)
+        acc,spd,eod,comm_cost = run_KRTD(method,model,client_distribution,dataset,protected_index,params,logger=logger)
 
     elif(method == 'Central'):
 
@@ -84,7 +96,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
           }
         # Under Construction
         print(f'The fair weight is {fairness}' ) 
-        acc,spd,eod  = run_Centralized(method,model,dataset,protected_index,params)
+        acc,spd,eod  = run_Centralized(method,model,dataset,protected_index,params,logger=logger)
         comm_cost = 0
         #acc,spd,eod,comm_cost  = run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric)
     
@@ -97,7 +109,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
           'batch_size': 64,
           "num_rounds":10}
         
-        acc,spd,eod,comm_cost  = run_FedAvg(method,model,client_distribution,dataset,protected_index,params)
+        acc,spd,eod,comm_cost  = run_FedAvg(method,model,client_distribution,dataset,protected_index,params,logger=logger)
     
     elif(method == 'MinMax'):
         params = {'local_epochs' :5 ,
@@ -107,7 +119,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
           'batch_size': 64,
           "global_adversary_rate":0.0000000001, #0.01,0.001
           "num_rounds":10}
-        acc,spd,eod,comm_cost  = run_MinMax(method,model,client_distribution,dataset,protected_index,params)
+        acc,spd,eod,comm_cost  = run_MinMax(method,model,client_distribution,dataset,protected_index,params,logger=logger)
         
     elif(method == 'FairFed_w_FairBatch'):
         params = {'local_epochs': 5,
@@ -120,7 +132,7 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
           "num_rounds": num_rounds,
           'alpha': alpha}
         fmetric = 'eod'
-        acc,spd,eod,comm_cost  = run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric)
+        acc,spd,eod,comm_cost  = run_FairFed(method,model,client_distribution,dataset,protected_index,params,fmetric,logger=logger)
         
         
     elif(method == 'FairFed_w_FairBatch_kernel'):
@@ -133,9 +145,10 @@ def simulation_spec(method,model,client_distribution,desired_data,fairness=None,
          "fairness":fairness,
          "num_rounds":10}
        fmetric = 'spd' #'eod','spd'
-       acc,spd,eod,comm_cost  = run_FairFed_kernel(method,model,client_distribution,dataset,protected_index,params,fmetric)
+       acc,spd,eod,comm_cost  = run_FairFed_kernel(method,model,client_distribution,dataset,protected_index,params,fmetric,logger=logger)
     
     else:
+        logger.close()
         print("Incorrect Method")
     
     results = {'Acc' : acc, 'SPD': spd, 'EOD' : eod, 'Comm_Cost' : comm_cost}
@@ -156,11 +169,13 @@ def simulation_runs(method, model, client_distribution, dataset, num_simulation,
             results = simulation_spec(method, model, client_distribution, dataset,
                                       fairness=params['fairness'],
                                       step_size=step_size, fb_lr=fb_lr,
-                                      num_rounds=num_rounds, alpha=alpha)
+                                      num_rounds=num_rounds, alpha=alpha,
+                                      seed_idx=i)
         else:
             results = simulation_spec(method, model, client_distribution, dataset,
                                       step_size=step_size, fb_lr=fb_lr,
-                                      num_rounds=num_rounds, alpha=alpha)
+                                      num_rounds=num_rounds, alpha=alpha,
+                                      seed_idx=i)
         
         acc.append(results['Acc'])
         spd.append(results['SPD'])
